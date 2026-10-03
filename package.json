@@ -1,0 +1,26 @@
+{
+  "name": "niveshsaathi",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "NiveshSaathi - Investor Resilience Companion",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "i18n:audit": "node scripts/i18n-audit.mjs",
+    "i18n:keys": "node scripts/i18n-used-keys.mjs",
+    "i18n:ssr": "node scripts/i18n-ssr-audit.mjs",
+    "i18n:leak": "node scripts/i18n-english-leak.mjs --all",
+    "i18n:check": "node scripts/i18n-audit.mjs && node scripts/i18n-used-keys.mjs && node scripts/i18n-ssr-audit.mjs && node scripts/i18n-english-leak.mjs --all"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.2",
+    "vite": "^5.4.10"
+  }
+}
