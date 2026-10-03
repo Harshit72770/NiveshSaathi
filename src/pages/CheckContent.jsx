@@ -6,6 +6,8 @@ import Button from '../components/Button.jsx'
 import EvidenceCard from '../components/EvidenceCard.jsx'
 import ProgressSteps from '../components/ProgressSteps.jsx'
 import { analyzeContent } from '../utils/contentAnalyzer.js'
+import { computeAssessment } from '../utils/assessment.js'
+import { OCR_ACCEPT, isSupportedImage, ocrLanguages, fetchPageText } from '../utils/inputSources.js'
 import { DEMO_MESSAGES } from '../data/demoContent.js'
 import { SIGNAL_MAP } from '../data/warningSignals.js'
 import { learningData, MODULE_MAP } from '../data/learningData.js'
@@ -42,6 +44,28 @@ export default function CheckContent() {
   const resultRef = useRef(null)
   const inputRef = useRef(null)
 
+  /* Input modes: paste (original) / screenshot OCR / link. */
+  const [mode, setMode] = useState('paste')
+  /* Where the current text came from — shown inside the analysis result. */
+  const [source, setSource] = useState(null)
+
+  /* Screenshot upload + local OCR. */
+  const [imageUrl, setImageUrl] = useState(null)
+  const [ocrState, setOcrState] = useState('idle') // idle | working | done | empty | error
+  const [ocrPercent, setOcrPercent] = useState(0)
+  const [imageError, setImageError] = useState(false)
+  const fileRef = useRef(null)
+  const imageUrlRef = useRef(null)
+  const ocrWorkerRef = useRef(null)
+  const ocrJobRef = useRef(0)
+
+  /* Link input. */
+  const [urlValue, setUrlValue] = useState('')
+  const [linkState, setLinkState] = useState('idle') // idle | working | done | invalid | blocked
+  /* Facts about a URL whose content could NOT be retrieved (for the
+     "Needs verification" panel — never an analysis, never a verdict). */
+  const [blockedFacts, setBlockedFacts] = useState(null)
+
   // Deep link from Learn: /check?signal=guaranteed-return
   const linkedSignal = useMemo(() => {
     const s = new URLSearchParams(location.search).get('signal')
@@ -52,13 +76,32 @@ export default function CheckContent() {
     if (linkedSignal) inputRef.current?.focus()
   }, [linkedSignal])
 
+  /* On unmount: release the preview image and stop any OCR worker. */
+  useEffect(() => {
+    const ref = imageUrlRef
+    const workerRef = ocrWorkerRef
+    return () => {
+      if (ref.current) URL.revokeObjectURL(ref.current)
+      safeTerminate(workerRef.current)
+      workerRef.current = null
+    }
+  }, [])
+
   const analyze = () => {
     if (!text.trim()) {
       setResult(null)
       inputRef.current?.focus()
       return
     }
-    setResult(analyzeContent(text))
+    // Snapshot the source with the analysis so the result always shows
+    // where this text actually came from. Link analyses also get the
+    // rule-based four-level assessment (source facts stay separate from
+    // what the page claims).
+    const analysis = analyzeContent(text)
+    if (source && source.type === 'link') {
+      analysis.assessment = computeAssessment(analysis, source)
+    }
+    setResult({ ...analysis, source })
     setLostMoney(false)
     window.setTimeout(() => {
       resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -69,6 +112,10 @@ export default function CheckContent() {
     setText(d.text)
     setActiveDemo(d.id)
     setResult(null)
+    setSource(null)
+    setBlockedFacts(null)
+    resetImage()
+    setLinkState('idle')
     inputRef.current?.focus()
     window.setTimeout(() => {
       inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -79,7 +126,182 @@ export default function CheckContent() {
     setText('')
     setResult(null)
     setActiveDemo(null)
+    setSource(null)
+    setBlockedFacts(null)
+    resetImage()
+    setLinkState('idle')
     inputRef.current?.focus()
+  }
+
+  /* ------------------------------------------------------------ OCR HELPERS */
+
+  const safeTerminate = (worker) => {
+    if (!worker) return
+    try {
+      const p = worker.terminate()
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    } catch {
+      /* worker already gone */
+    }
+  }
+
+  /** Replace (or clear) the object URL used for the image preview. */
+  const setImagePreview = (url) => {
+    if (imageUrlRef.current) URL.revokeObjectURL(imageUrlRef.current)
+    imageUrlRef.current = url || null
+    setImageUrl(url || null)
+  }
+
+  /** Stop any running OCR job and drop the preview image. */
+  const resetImage = () => {
+    ocrJobRef.current += 1
+    safeTerminate(ocrWorkerRef.current)
+    ocrWorkerRef.current = null
+    setImagePreview(null)
+    setOcrState('idle')
+    setOcrPercent(0)
+    setImageError(false)
+  }
+
+  const removeImage = () => resetImage()
+
+  /**
+   * Read the selected screenshot with local OCR (tesseract.js, loaded on
+   * demand). The extracted text is NEVER auto-analysed: it lands in the
+   * textarea for the user to review and correct first.
+   */
+  const runOcr = async () => {
+    const target = imageUrlRef.current
+    if (!target) return
+    const job = ++ocrJobRef.current
+
+    try {
+      const mod = await import('tesseract.js')
+      const createWorker = mod.createWorker || (mod.default && mod.default.createWorker)
+      if (typeof createWorker !== 'function') throw new Error('OCR unavailable')
+
+      const worker = await createWorker(ocrLanguages(language), 1, {
+        logger: (m) => {
+          if (job !== ocrJobRef.current) return
+          if (m && typeof m.progress === 'number') {
+            setOcrPercent(Math.max(0, Math.min(100, Math.round(m.progress * 100))))
+          }
+        },
+      })
+
+      if (job !== ocrJobRef.current) {
+        safeTerminate(worker)
+        return
+      }
+
+      ocrWorkerRef.current = worker
+      let data = null
+      try {
+        const out = await worker.recognize(target)
+        data = out && out.data
+      } finally {
+        safeTerminate(worker)
+        if (ocrWorkerRef.current === worker) ocrWorkerRef.current = null
+      }
+
+      if (job !== ocrJobRef.current) return // superseded / removed
+
+      const raw = (data && data.text) || ''
+      const extracted = raw.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
+
+      if (!extracted) {
+        setOcrState('empty')
+        return
+      }
+
+      setText(extracted)
+      setSource({ type: 'image' })
+      setResult(null)
+      setLostMoney(false)
+      setActiveDemo(null)
+      setOcrState('done')
+      window.setTimeout(() => {
+        inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 80)
+    } catch {
+      if (job === ocrJobRef.current) setOcrState('error')
+    }
+  }
+
+  /** File picker change: validate, preview, then run OCR. */
+  const onFileChange = async (e) => {
+    const file = e.target.files && e.target.files[0]
+    e.target.value = '' // allow re-selecting the same file
+    if (!file) return
+
+    if (!isSupportedImage(file)) {
+      // Keep any existing image; just surface the format/size error.
+      setImageError(true)
+      return
+    }
+
+    setImageError(false)
+    ocrJobRef.current += 1
+    safeTerminate(ocrWorkerRef.current)
+    ocrWorkerRef.current = null
+    setImagePreview(URL.createObjectURL(file))
+    setOcrState('working')
+    setOcrPercent(0)
+    await runOcr()
+  }
+
+  /* ----------------------------------------------------------- LINK HELPERS */
+
+  /**
+   * Retrieve readable page text for the pasted URL. Any CORS/network/
+   * parsing failure lands on the "blocked" state, which tells the user to
+   * paste the text or upload a screenshot instead.
+   */
+  const fetchLink = async () => {
+    if (!urlValue.trim() || linkState === 'working') return
+    setLinkState('working')
+    setBlockedFacts(null)
+    try {
+      const res = await fetchPageText(urlValue)
+      if (res.status === 'invalid') {
+        setLinkState('invalid')
+        return
+      }
+      if (res.status !== 'ok') {
+        // Nothing was read — record only the address facts so the UI can
+        // say "needs verification", never "fraud".
+        setBlockedFacts({ domain: res.domain, https: res.https, url: res.url })
+        setLinkState('blocked')
+        return
+      }
+
+      setText(res.text)
+      setSource({
+        type: 'link',
+        url: res.url,
+        domain: res.domain,
+        https: res.https,
+        official: res.official,
+        title: res.title || '',
+        retrieved: true,
+      })
+      setResult(null)
+      setLostMoney(false)
+      setActiveDemo(null)
+      setLinkState('done')
+      window.setTimeout(() => {
+        inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 80)
+    } catch {
+      setBlockedFacts(null)
+      setLinkState('blocked')
+    }
+  }
+
+  const onTextChange = (e) => {
+    setText(e.target.value)
+    // Text typed over in Paste mode no longer belongs to a fetched source.
+    if (mode === 'paste' && source) setSource(null)
   }
 
   const conceptId = result && !result.isEmpty ? pickConcept(result) : 'risk'
@@ -131,6 +353,315 @@ export default function CheckContent() {
           </div>
         </div>
 
+        {/* --------------------------------------------------- INPUT MODES */}
+        <div
+          className="tabs"
+          role="tablist"
+          aria-label={t('checkContent.modes.label')}
+          style={{ marginTop: 4 }}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'paste'}
+            className={`tab${mode === 'paste' ? ' active' : ''}`}
+            onClick={() => setMode('paste')}
+          >
+            {t('checkContent.modes.paste')}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'image'}
+            className={`tab${mode === 'image' ? ' active' : ''}`}
+            onClick={() => setMode('image')}
+          >
+            {t('checkContent.modes.screenshot')}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'link'}
+            className={`tab${mode === 'link' ? ' active' : ''}`}
+            onClick={() => setMode('link')}
+          >
+            {t('checkContent.modes.link')}
+          </button>
+        </div>
+
+        {mode === 'paste' && (
+          <p className="hint" style={{ marginTop: 12 }}>
+            {t('checkContent.modes.pasteHint')}
+          </p>
+        )}
+
+        {/* ------------------------------------------------ SCREENSHOT PANEL */}
+        {mode === 'image' && (
+          <div
+            className="stack-sm"
+            style={{ marginTop: 14 }}
+            role="tabpanel"
+            aria-label={t('checkContent.modes.screenshot')}
+          >
+            <p className="small" style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>
+              {t('checkContent.ocr.heading')}
+            </p>
+            <p className="small text-muted" style={{ margin: 0 }}>
+              {t('checkContent.ocr.hint')}
+            </p>
+
+            <input
+              id="check-ocr-file"
+              ref={fileRef}
+              type="file"
+              className="sr-only"
+              accept={OCR_ACCEPT}
+              onChange={onFileChange}
+            />
+
+            {imageError && (
+              <div className="notice notice--stop" style={{ marginTop: 4 }}>
+                <span className="notice__icon">
+                  <Icon name="alert" size={18} />
+                </span>
+                <div className="small">{t('checkContent.ocr.invalid')}</div>
+              </div>
+            )}
+
+            {!imageUrl && (
+              <div className="row" style={{ gap: 9 }}>
+                <label
+                  className="btn btn--primary"
+                  htmlFor="check-ocr-file"
+                  style={{ cursor: 'pointer' }}
+                >
+                  <Icon name="doc" size={18} />
+                  {t('checkContent.ocr.choose')}
+                </label>
+              </div>
+            )}
+
+            {imageUrl && (
+              <div className="card" style={{ padding: 14 }}>
+                <img
+                  src={imageUrl}
+                  alt={t('checkContent.ocr.previewAlt')}
+                  style={{
+                    display: 'block',
+                    maxWidth: '100%',
+                    maxHeight: 220,
+                    margin: '0 auto',
+                    borderRadius: 12,
+                    border: '1px solid var(--border)',
+                    objectFit: 'contain',
+                  }}
+                />
+
+                {ocrState === 'working' && (
+                  <div style={{ marginTop: 14 }}>
+                    <div className="small" style={{ marginBottom: 7 }}>
+                      {t('checkContent.ocr.reading', { percent: ocrPercent })}
+                    </div>
+                    <div
+                      className="progress"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={ocrPercent}
+                    >
+                      <div className="progress__fill" style={{ width: `${ocrPercent}%` }} />
+                    </div>
+                    <p className="hint">{t('checkContent.ocr.readingNote')}</p>
+                  </div>
+                )}
+
+                {ocrState === 'done' && (
+                  <div className="notice notice--ok" style={{ marginTop: 12 }}>
+                    <span className="notice__icon">
+                      <Icon name="checkCircle" size={18} />
+                    </span>
+                    <div>
+                      <strong>{t('checkContent.ocr.reviewTitle')}</strong>
+                      <div className="small" style={{ marginTop: 3 }}>
+                        {t('checkContent.ocr.reviewBody')}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {ocrState === 'empty' && (
+                  <div className="notice notice--warn" style={{ marginTop: 12 }}>
+                    <span className="notice__icon">
+                      <Icon name="info" size={18} />
+                    </span>
+                    <div>
+                      <strong>{t('checkContent.ocr.emptyTitle')}</strong>
+                      <div className="small" style={{ marginTop: 3 }}>
+                        {t('checkContent.ocr.emptyBody')}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {ocrState === 'error' && (
+                  <div className="notice notice--stop" style={{ marginTop: 12 }}>
+                    <span className="notice__icon">
+                      <Icon name="alert" size={18} />
+                    </span>
+                    <div>
+                      <strong>{t('checkContent.ocr.errorTitle')}</strong>
+                      <div className="small" style={{ marginTop: 3 }}>
+                        {t('checkContent.ocr.errorBody')}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="row" style={{ marginTop: 13, gap: 9 }}>
+                  <label
+                    className="btn btn--soft"
+                    htmlFor="check-ocr-file"
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <Icon name="refresh" size={17} />
+                    {t('checkContent.ocr.replace')}
+                  </label>
+                  <Button variant="outline" icon="x" onClick={removeImage}>
+                    {t('checkContent.ocr.remove')}
+                  </Button>
+                  {(ocrState === 'empty' || ocrState === 'error') && (
+                    <Button variant="ghost" icon="arrowRight" onClick={() => setMode('paste')}>
+                      {t('checkContent.modes.paste')}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ----------------------------------------------------- LINK PANEL */}
+        {mode === 'link' && (
+          <div
+            className="stack-sm"
+            style={{ marginTop: 14 }}
+            role="tabpanel"
+            aria-label={t('checkContent.link.heading')}
+          >
+            <p className="small" style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>
+              {t('checkContent.link.heading')}
+            </p>
+
+            <div className="row" style={{ gap: 9 }}>
+              <label className="sr-only" htmlFor="check-link-input">
+                {t('checkContent.link.label')}
+              </label>
+              <input
+                id="check-link-input"
+                className="input"
+                style={{ flex: '1 1 240px', minWidth: 0 }}
+                type="url"
+                inputMode="url"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={t('checkContent.link.placeholder')}
+                value={urlValue}
+                onChange={(e) => {
+                  setUrlValue(e.target.value)
+                  if (linkState !== 'working') setLinkState('idle')
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    fetchLink()
+                  }
+                }}
+              />
+              <Button
+                variant="primary"
+                icon="link"
+                onClick={fetchLink}
+                disabled={!urlValue.trim() || linkState === 'working'}
+              >
+                {t('checkContent.link.fetch')}
+              </Button>
+            </div>
+
+            {linkState === 'working' && (
+              <div className="small text-muted">{t('checkContent.link.fetching')}</div>
+            )}
+
+            {linkState === 'invalid' && (
+              <div className="notice notice--stop">
+                <span className="notice__icon">
+                  <Icon name="alert" size={18} />
+                </span>
+                <div className="small">{t('checkContent.link.invalid')}</div>
+              </div>
+            )}
+
+            {linkState === 'blocked' && (
+              <div className="notice notice--info" role="status">
+                <span className="notice__icon" style={{ fontSize: 17, marginTop: 0 }}>
+                  🟡
+                </span>
+                <div style={{ minWidth: 0 }}>
+                  <div className="row" style={{ gap: 8 }}>
+                    <strong>{t('assessment.title')}</strong>
+                    <span className="badge">{t('assessment.levels.verify.label')}</span>
+                  </div>
+                  <div className="small" style={{ marginTop: 4 }}>
+                    {t('assessment.levels.verify.body')}
+                  </div>
+
+                  {blockedFacts && (
+                    <div className="small text-muted" style={{ marginTop: 7 }}>
+                      <strong style={{ color: 'var(--ink-soft)' }}>{t('sourceInfo.domain')}:</strong>{' '}
+                      <span style={{ wordBreak: 'break-all', unicodeBidi: 'isolate' }}>
+                        {blockedFacts.domain}
+                      </span>{' '}
+                      ·{' '}
+                      <strong style={{ color: 'var(--ink-soft)' }}>
+                        {t('sourceInfo.secureLabel')}:
+                      </strong>{' '}
+                      {blockedFacts.https ? t('sourceInfo.secureYes') : t('sourceInfo.secureNo')}
+                    </div>
+                  )}
+
+                  <div className="small" style={{ marginTop: 7 }}>
+                    {t('checkContent.link.blocked')}
+                  </div>
+
+                  <div className="row" style={{ marginTop: 10, gap: 9 }}>
+                    <Button variant="soft" size="sm" icon="doc" onClick={() => setMode('image')}>
+                      {t('checkContent.modes.screenshot')}
+                    </Button>
+                    <Button variant="ghost" size="sm" icon="arrowRight" onClick={() => setMode('paste')}>
+                      {t('checkContent.modes.paste')}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {linkState === 'done' && (
+              <div className="notice notice--ok">
+                <span className="notice__icon">
+                  <Icon name="checkCircle" size={18} />
+                </span>
+                <div>
+                  <strong>{t('checkContent.link.reviewTitle')}</strong>
+                  <div className="small" style={{ marginTop: 3 }}>
+                    {t('checkContent.link.reviewBody')}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <p className="hint">{t('checkContent.link.safetyNote')}</p>
+          </div>
+        )}
+
         <label className="sr-only" htmlFor="content-input">
           {t('checkContent.inputLabel')}
         </label>
@@ -140,7 +671,7 @@ export default function CheckContent() {
           className="textarea textarea--xl"
           placeholder={t('checkContent.placeholder')}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={onTextChange}
           spellCheck={false}
         />
 
@@ -189,8 +720,7 @@ export default function CheckContent() {
                 {t(`checkContent.demoTitles.${d.id}`)}
               </button>
             ))}
-          </div>
-          <p className="hint">{t('checkContent.localOnly')}</p>
+          </div>            {mode !== 'link' && <p className="hint">{t('checkContent.localOnly')}</p>}
         </div>
 
         <p className="hint" style={{ marginTop: 14 }}>

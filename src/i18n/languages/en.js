@@ -58,7 +58,6 @@ export default {
     entries: 'entries',
     observation: 'observation',
     observations: 'observations',
-    track: 'Track',
     optional: 'Optional',
     somethingWentWrong: 'Something went wrong. Please try again.',
     stepOf: 'Step {{current}} of {{total}}',
@@ -107,8 +106,6 @@ export default {
     journeyTitle: 'How the five tracks work together',
     journeyDesc:
       'A message arrives. Instead of reacting, you move through the tracks — and you still make the decision yourself.',
-    tracksEyebrow: 'The five core tracks',
-    tracksTitle: 'One product, five working parts',
     guardEyebrow: 'What NiveshSaathi will never do',
     tryDemo: 'Try Demo',
     flow: {
@@ -188,13 +185,6 @@ export default {
         b1: 'Nothing is bought or sold here',
         b2: 'If something already went wrong → Track A recovery + Track B rights and grievance',
       },
-    },
-    tracks: {
-      a: { name: 'Fraud & Scam Resilience', where: 'Inside Check Content + Recovery' },
-      b: { name: 'Rights & Grievance', where: 'I Have a Problem' },
-      c: { name: 'Education for Bharat', where: 'Learn' },
-      d: { name: 'Habits & Behaviour', where: 'Before I Invest + My Decisions' },
-      e: { name: 'Misinformation Literacy', where: 'Check Content' },
     },
     never: {
       n1: 'Recommend stocks, mutual funds or securities',
@@ -508,6 +498,115 @@ export default {
       safeAction: 'Safe Action',
       recovery: 'Recovery',
     },
+
+  /* ------------------------------------------------- INPUT MODES (E: new) */
+    modes: {
+      label: 'Choose how to add content',
+      paste: 'Paste Message',
+      screenshot: 'Upload Screenshot',
+      link: 'Analyze Link',
+      pasteHint:
+        'Paste the message, post or article text into the box below, then press Analyze Content.',
+    },
+
+    ocr: {
+      heading: 'Upload a screenshot',
+      hint: 'JPG, JPEG, PNG or WEBP. The image is read on this device and is never uploaded anywhere.',
+      choose: 'Choose image',
+      replace: 'Choose a different image',
+      remove: 'Remove image',
+      previewAlt: 'Preview of the image you selected',
+      reading: 'Reading the image… {{percent}}%',
+      readingNote:
+        'The first use may download the text-reading model for your language, which can take a moment.',
+      reviewTitle: 'Text read from your screenshot',
+      reviewBody:
+        'Please check and correct the text below before analysing it — automatic reading can make mistakes.',
+      emptyTitle: 'No readable text found',
+      emptyBody:
+        'We could not read any text in this image. Try a clearer screenshot, or paste the message instead.',
+      errorTitle: 'Could not read this image',
+      errorBody:
+        'Something went wrong while reading the image. Try another JPG, JPEG, PNG or WEBP image, or paste the message instead.',
+      invalid: 'Please choose a JPG, JPEG, PNG or WEBP image smaller than 10 MB.',
+    },
+
+    link: {
+      heading: 'Analyze a link',
+      label: 'Web address (URL)',
+      placeholder: 'https://example.com/article',
+      fetch: 'Fetch content',
+      fetching: 'Fetching the page…',
+      invalid: 'Please enter a valid web address that starts with http:// or https://.',
+      blocked:
+        'We couldn\u2019t safely retrieve readable content from this link. Paste the text or upload a screenshot instead.',
+      reviewTitle: 'Content read from the link',
+      reviewBody: 'Review the text below, then press Analyze Content.',
+      safetyNote:
+        'A page that opens is not automatically safe. Reading a link may share its address with a public reading service — never enter personal, login or payment details on any page.',
+    },
+
+    source: {
+      title: 'Analysis source',
+      image: 'Text read from an uploaded screenshot',
+      caveat:
+        'The source is shown for transparency only — a source on its own never shows whether the content is trustworthy.',
+    },
+  },
+
+  /* ----------------------------------------- FOUR-LEVEL ASSESSMENT (links) */
+  assessment: {
+    title: 'Overall assessment',
+    positiveTitle: 'Positive evidence found',
+    levels: {
+      legit: {
+        label: 'Likely legitimate',
+        body:
+          'The source appears legitimate based on the information we could verify. We did not identify major warning signals in the content reviewed.',
+      },
+      verify: {
+        label: 'Needs verification',
+        body:
+          'The source or content could not be sufficiently verified, or important information is missing. This is not a finding of fraud \u2014 verify independently before you act.',
+      },
+      caution: {
+        label: 'Caution',
+        body:
+          'Potentially misleading or manipulative signals are present, but the available evidence is insufficient to establish fraud. Slow down and verify before you act.',
+      },
+      warning: {
+        label: 'Strong warning signals',
+        body:
+          'Multiple significant warning signals were found in the content reviewed. A warning signal is not proof of fraud \u2014 verify independently before you act.',
+      },
+    },
+    positives: {
+      'official-domain':
+        'The address is on a recognised official domain ({{domain}}). Source legitimacy is evaluated separately from the claims made on the page.',
+      'registration-reference':
+        'A registration or licence reference is quoted, which can be checked against the regulator\u2019s public register.',
+      'source-attribution': 'A named source or regulator is given for the claim.',
+      'audited-figures': 'Audited figures or an auditor are referenced.',
+      'risk-disclosure': 'A risk disclosure or past-performance caveat is present.',
+      'supporting-material': 'Supporting material (documents, terms or links) is referenced.',
+      'no-major-signals':
+        'No high-severity warning signals were found in the content reviewed.',
+    },
+  },
+
+  /* ------------------------------------------- SOURCE / URL INFORMATION */
+  sourceInfo: {
+    title: 'Source / URL:',
+    domain: 'Domain',
+    secureLabel: 'HTTPS',
+    secureYes: 'Yes',
+    secureNo: 'No',
+    pageTitle: 'Page title',
+    noTitle: 'not available',
+    retrieved:
+      'The content below was read from this page and analysed with the same rule-based checks as pasted text.',
+    linkNote:
+      'Domain, HTTPS and page title are facts about the address only. They do not show that the claims on this page are true or that an offer is legitimate.',
   },
 
   /* ---------------------------------------------------------- EVIDENCE CARD */

@@ -19,14 +19,6 @@ const FLOW = [
   { icon: 'checkCircle', key: 'actSafely' },
 ]
 
-const TRACKS = [
-  { code: 'A', key: 'a', icon: 'alert', tone: 'rose' },
-  { code: 'B', key: 'b', icon: 'flag', tone: 'green' },
-  { code: 'C', key: 'c', icon: 'book', tone: '' },
-  { code: 'D', key: 'd', icon: 'pause', tone: 'amber' },
-  { code: 'E', key: 'e', icon: 'eye', tone: '' },
-]
-
 const NEVER = [
   ['n1', 'n2', 'n3', 'n4'],
   ['n5', 'n6', 'n7', 'n8'],
@@ -230,39 +222,6 @@ export default function Home() {
               </div>
             )
           })}
-        </div>
-      </section>
-
-      {/* -------------------------------------------------------------- TRACKS */}
-      <section className="section">
-        <div className="section-head">
-          <div className="eyebrow">{t('home.tracksEyebrow')}</div>
-          <h2>{t('home.tracksTitle')}</h2>
-        </div>
-
-        <div className="card-grid">
-          {TRACKS.map((track) => (
-            <div className="card" key={track.code}>
-              <div className="row" style={{ gap: 13, alignItems: 'flex-start' }}>
-                <span className={`icon-tile${track.tone ? ` icon-tile--${track.tone}` : ''}`}>
-                  <Icon name={track.icon} size={22} />
-                </span>
-                <div style={{ minWidth: 0 }}>
-                  <div className="row" style={{ gap: 8, marginBottom: 4 }}>
-                    <span className="badge">
-                      {t('common.track')} {track.code}
-                    </span>
-                  </div>
-                  <h3 style={{ margin: '0 0 5px', fontSize: '1.02rem' }}>
-                    {t(`home.tracks.${track.key}.name`)}
-                  </h3>
-                  <p className="small text-muted" style={{ margin: 0 }}>
-                    {t(`home.tracks.${track.key}.where`)}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))}
         </div>
       </section>
 
