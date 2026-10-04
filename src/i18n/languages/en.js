@@ -1546,6 +1546,38 @@ export default {
     emptyEvidence:
       'The content does not present supporting evidence.',
     emptyList: 'None identified.',
+    /* Track B — rights & grievance */
+    situationUnderstanding: 'Understanding your situation',
+    relevantDocuments: 'Documents that may be relevant',
+    grievanceDraft: 'Draft complaint — edit before sending',
+    grievanceDraftNote:
+      'This draft was built only from what you wrote. Check every detail and remove anything that does not match your case before sending it. NiveshSaathi does not confirm any law, deadline or official process for you.',
+    nextStep: 'Your next step',
+    copyDraft: 'Copy draft',
+    /* Track C — education + voice */
+    everydayExample: 'Everyday example',
+    voice: {
+      title: 'Listen to this explanation',
+      desc:
+        'Uses your device voice — free, private and offline. No audio is sent to NiveshSaathi or to the AI.',
+      listen: 'Listen',
+      pause: 'Pause',
+      resume: 'Resume',
+      stop: 'Stop',
+      playing: 'Playing…',
+      paused: 'Paused',
+      unsupported:
+        'Voice is not available in this browser. The explanation stays visible as text.',
+      error: 'Voice could not start. The text explanation is still available.',
+    },
+    /* Track D — behavioural reflection */
+    observedPatterns: 'Possible patterns',
+    noPatterns: 'No strong pattern was visible in what you wrote.',
+    whyItMayMatter: 'Why this may matter',
+    reflectionQuestions: 'Questions to reflect on',
+    coolingOff: 'Cooling-off suggestion',
+    coolingOffButton: 'Start a cooling-off',
+    saferProcess: 'A calmer decision process',
     disclaimerTitle: 'Important:',
     disclaimerBody:
       'this is an AI interpretation — not a fraud verdict, not an investment recommendation, and not a prediction. The rule-based analysis remains the foundation of this result, and the decision remains yours.',

@@ -951,6 +951,70 @@ button { font-family: inherit; }
   animation: ai-progress-slide 1.6s ease-in-out infinite alternate;
 }
 
+/* ---------- Track C — voice controls ---------- */
+
+.speech-controls { margin-top: 4px; }
+
+.speech-controls__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Comfortable tap targets on phones (Tier-2/3 usability) */
+.speech-controls__row .btn {
+  min-height: 44px;
+  padding-inline: 16px;
+}
+
+.speech-controls__lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  white-space: nowrap;
+}
+
+/* ---------- Track B — AI grievance draft ---------- */
+
+.draft-block {
+  margin: 0;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 420px;
+  overflow: auto;
+}
+
+/* Long AI responses must never overflow a phone screen */
+.ev-block__content,
+.ev-block__content p,
+.ev-list li,
+.notice .small {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .speech-controls__row { gap: 7px; }
+  .speech-controls__row .btn { flex: 1 1 42%; justify-content: center; }
+  .speech-controls__lang { flex: 1 1 100%; justify-content: center; }
+  .draft-block { max-height: 320px; font-size: 0.82rem; }
+}
+
 /* ---------- Hero (Home) ---------- */
 
 .hero {

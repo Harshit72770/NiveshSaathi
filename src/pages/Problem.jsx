@@ -206,6 +206,12 @@ function ComplaintAssistant() {
       when ? `When: ${when}` : '',
       entity ? `Entity: ${entity}` : '',
       outcome ? `Outcome sought: ${outcome}` : '',
+      docs.length
+        ? `Documents the user marked from the local checklist: ${docs.map((d) => t(d)).join('; ')}`
+        : '',
+      draft
+        ? `\nNiveshSaathi local draft template the user already has (improve its wording only — invent no fact, law, section, deadline or registration):\n${draft}`
+        : '',
     ]
       .filter(Boolean)
       .join('\n')

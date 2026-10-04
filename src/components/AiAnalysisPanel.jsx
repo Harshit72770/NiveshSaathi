@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import Icon from './Icon.jsx'
 import Button from './Button.jsx'
 import { useLanguage } from '../i18n/index.js'
@@ -55,6 +57,54 @@ function List({ items, tone = 'neutral', emptyText }) {
         <li key={i}>{item}</li>
       ))}
     </ul>
+  )
+}
+
+/** Numbered list — used for reflection questions. */
+function OrderedList({ items, emptyText }) {
+  if (!items || items.length === 0) {
+    return <p className="text-muted" style={{ margin: 0 }}>{emptyText}</p>
+  }
+  return (
+    <ol
+      className="ev-list ev-list--neutral"
+      style={{ marginTop: 4, paddingInlineStart: 22, listStyle: 'decimal', display: 'grid', gap: 7 }}
+    >
+      {items.map((item, i) => (
+        <li key={i}>{item}</li>
+      ))}
+    </ol>
+  )
+}
+
+/**
+ * Track B — the AI grievance draft, with a one-tap copy control.
+ * The text is only ever shown and copied; it is never sent anywhere and
+ * never modifies the user's own local draft above it.
+ */
+function DraftBlock({ text }) {
+  const { t } = useLanguage()
+  const [copied, setCopied] = useState(false)
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <>
+      <pre className="draft-block">{text}</pre>
+      <div className="row" style={{ marginTop: 10 }}>
+        <Button variant="soft" size="sm" icon="copy" onClick={copy}>
+          {copied ? t('common.copied') : t('ai.copyDraft')}
+        </Button>
+      </div>
+    </>
   )
 }
 
@@ -159,6 +209,98 @@ export default function AiAnalysisPanel({ state, analysis, track, onRetry }) {
             </div>
           )}
 
+          {/* ------------------------------------- Track B — rights & grievance */}
+          {track === 'B' && analysis.situationUnderstanding && (
+            <Section icon="help" title={t('ai.situationUnderstanding')}>
+              <p style={{ margin: 0, lineHeight: 1.7 }}>{analysis.situationUnderstanding}</p>
+            </Section>
+          )}
+
+          {track === 'B' && (
+            <Section icon="folder" title={t('ai.relevantDocuments')}>
+              <List items={analysis.relevantDocuments} emptyText={t('ai.emptyList')} />
+            </Section>
+          )}
+
+          {track === 'B' && analysis.grievanceDraft && (
+            <Section icon="doc" title={t('ai.grievanceDraft')}>
+              <DraftBlock text={analysis.grievanceDraft} />
+              <div className="small text-muted" style={{ marginTop: 8 }}>
+                {t('ai.grievanceDraftNote')}
+              </div>
+            </Section>
+          )}
+
+          {track === 'B' && analysis.nextStepExplanation && (
+            <Section icon="compass" title={t('ai.nextStep')}>
+              <p style={{ margin: 0, lineHeight: 1.7 }}>{analysis.nextStepExplanation}</p>
+            </Section>
+          )}
+
+          {/* ------------------------------------------- Track C — education */}
+          {track === 'C' && analysis.everydayExample && (
+            <Section icon="chart" title={t('ai.everydayExample')}>
+              <p style={{ margin: 0, lineHeight: 1.7 }}>{analysis.everydayExample}</p>
+            </Section>
+          )}
+
+          {/* --------------------------------- Track D — behavioural reflection */}
+          {track === 'D' && (
+            <>
+              <Section icon="eye" title={t('ai.observedPatterns')}>
+                <List
+                  items={analysis.observedPatterns}
+                  tone="missing"
+                  emptyText={t('ai.noPatterns')}
+                />
+              </Section>
+
+              {analysis.whyItMayMatter && (
+                <Section icon="info" title={t('ai.whyItMayMatter')}>
+                  <p style={{ margin: 0, lineHeight: 1.7 }}>{analysis.whyItMayMatter}</p>
+                </Section>
+              )}
+
+              <Section icon="help" title={t('ai.reflectionQuestions')}>
+                <OrderedList items={analysis.reflectionQuestions} emptyText={t('ai.emptyList')} />
+              </Section>
+
+              {analysis.coolingOffSuggestion && (
+                <div className="notice notice--info" style={{ alignItems: 'flex-start' }}>
+                  <span className="notice__icon">
+                    <Icon name="pause" size={18} />
+                  </span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="ev-block__title" style={{ marginBottom: 4 }}>
+                      {t('ai.coolingOff')}
+                    </div>
+                    <div className="small" style={{ lineHeight: 1.65 }}>
+                      {analysis.coolingOffSuggestion}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <Section icon="shield" title={t('ai.saferProcess')}>
+                <List
+                  items={analysis.saferDecisionProcess}
+                  tone="have"
+                  emptyText={t('ai.emptyList')}
+                />
+              </Section>
+
+              <div className="row">
+                <Button to="/before-invest" variant="soft" size="sm" icon="pause">
+                  {t('ai.coolingOffButton')}
+                </Button>
+              </div>
+            </>
+          )}
+
+          {/* Content-claim view — Tracks A, B, C, E. Hidden for Track D,
+              where a personal reflection has no "claims" to assess. */}
+          {track !== 'D' && (
+            <>
           {/* 3. What is being claimed? */}
           <Section icon="doc" title={t('ai.claimed')}>
             <List
@@ -217,6 +359,8 @@ export default function AiAnalysisPanel({ state, analysis, track, onRetry }) {
               emptyText={t('ai.emptyList')}
             />
           </Section>
+            </>
+          )}
 
           {/* 8. Uncertainty */}
           <Section icon="help" title={t('ai.uncertainty')}>
@@ -224,6 +368,7 @@ export default function AiAnalysisPanel({ state, analysis, track, onRetry }) {
           </Section>
 
           {/* 9. How to verify independently */}
+          {track !== 'D' && (
           <Section icon="eye" title={t('ai.verification')}>
             {analysis.verificationSteps.length > 0 ? (
               <ol
@@ -248,6 +393,7 @@ export default function AiAnalysisPanel({ state, analysis, track, onRetry }) {
               </p>
             )}
           </Section>
+          )}
 
           {/* 10. Safe next steps */}
           <Section icon="shield" title={t('ai.safeNextSteps')}>

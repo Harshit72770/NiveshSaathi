@@ -5,6 +5,7 @@ import Icon from '../components/Icon.jsx'
 import Button from '../components/Button.jsx'
 import LearningCard from '../components/LearningCard.jsx'
 import AiAnalysisPanel from '../components/AiAnalysisPanel.jsx'
+import SpeechControls from '../components/SpeechControls.jsx'
 import { fetchAiAnalysis } from '../utils/aiAnalysis.js'
 import { learningData } from '../data/learningData.js'
 import { useLanguage, getModuleContent } from '../i18n/index.js'
@@ -44,6 +45,28 @@ export default function Learn() {
 
   const activeContent = getModuleContent(language, activeModule.id)
   const progress = 100
+
+  /* Text the voice controls read aloud: the AI explanation once it is ready,
+     otherwise the local lesson — so voice works even if the AI is offline. */
+  const spokenText =
+    aiState === 'done' && aiResult
+      ? [
+          aiResult.summary,
+          aiResult.trackSpecificInsight,
+          aiResult.everydayExample,
+          ...(aiResult.safeNextSteps || []),
+        ]
+          .filter(Boolean)
+          .join('. ')
+      : [
+          activeContent?.title,
+          activeContent?.concept,
+          activeContent?.simple,
+          activeContent?.analogy,
+          activeContent?.example,
+        ]
+          .filter(Boolean)
+          .join('. ')
 
   /**
    * Request a simple AI explanation of the active module.
@@ -225,6 +248,18 @@ export default function Learn() {
                 if (content) explainModule(content)
               }}
             />
+
+            {/* ------------------------------------------- Voice (Track C) */}
+            <div className="card card--pad-lg animate-in" style={{ marginTop: 16 }}>
+              <div className="ev-block__title" style={{ marginBottom: 6 }}>
+                <Icon name="volume" size={15} />
+                {t('ai.voice.title')}
+              </div>
+              <p className="small text-muted" style={{ margin: '0 0 14px' }}>
+                {t('ai.voice.desc')}
+              </p>
+              <SpeechControls text={spokenText} langCode={language} />
+            </div>
           </section>
         </div>
       </div>
