@@ -6,6 +6,7 @@
   "description": "NiveshSaathi - Investor Resilience Companion",
   "scripts": {
     "dev": "vite",
+    "server": "node server/index.js",
     "build": "vite build",
     "preview": "vite preview",
     "i18n:audit": "node scripts/i18n-audit.mjs",
@@ -15,6 +16,9 @@
     "i18n:check": "node scripts/i18n-audit.mjs && node scripts/i18n-used-keys.mjs && node scripts/i18n-ssr-audit.mjs && node scripts/i18n-english-leak.mjs --all"
   },
   "dependencies": {
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "groq-sdk": "^1.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2",

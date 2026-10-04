@@ -4,6 +4,8 @@ import Icon from '../components/Icon.jsx'
 import Button from '../components/Button.jsx'
 import ProgressSteps from '../components/ProgressSteps.jsx'
 import RecoveryChecklist, { NeverShareNotice } from '../components/RecoveryChecklist.jsx'
+import AiAnalysisPanel from '../components/AiAnalysisPanel.jsx'
+import { fetchAiAnalysis } from '../utils/aiAnalysis.js'
 import { read, write } from '../utils/localStorage.js'
 import { useLanguage, backArrowStyle } from '../i18n/index.js'
 
@@ -76,8 +78,15 @@ function ComplaintAssistant() {
   const [draft, setDraft] = useState('')
   const [copied, setCopied] = useState(false)
   const topRef = useRef(null)
-  const { t, dir } = useLanguage()
+  const { language, t, dir } = useLanguage()
   const backFlip = backArrowStyle(dir)
+
+  /* AI guidance (Track B) — complements the local draft, never
+     replaces it and never invents laws, deadlines or procedures. */
+  const [aiState, setAiState] = useState('idle') // idle | loading | done | error
+  const [aiResult, setAiResult] = useState(null)
+  const aiJobRef = useRef(0)
+  const aiRetryRef = useRef(null)
 
   const catLabel = category ? t(`problem.categories.${category}.label`) : ''
   const flowSteps = FLOW_KEYS.map((k) => t(`problem.flowSteps.${k}`))
@@ -156,6 +165,52 @@ function ComplaintAssistant() {
   const docList = category
     ? t(`problem.categories.${category}.docs`)
     : t('problem.genericDocs')
+
+  /**
+   * Request AI guidance for the grievance (Track B).
+   * The local draft template above stays the source of truth; the
+   * AI only explains the situation and process — it never invents
+   * laws, deadlines or official procedures.
+   */
+  const analyzeProblem = (content) => {
+    const job = ++aiJobRef.current
+    aiRetryRef.current = content
+    setAiResult(null)
+    setAiState('loading')
+    fetchAiAnalysis({
+      track: 'B',
+      content,
+      language,
+      existingAnalysis: {
+        framework: 'Track B rights & grievance assistant',
+        category: category || 'unspecified',
+        localDraftGenerated: Boolean(draft),
+      },
+    })
+      .then((ai) => {
+        if (job !== aiJobRef.current) return
+        setAiResult(ai)
+        setAiState('done')
+      })
+      .catch(() => {
+        if (job !== aiJobRef.current) return
+        setAiResult(null)
+        setAiState('error')
+      })
+  }
+
+  const requestAiGuidance = () => {
+    const content = [
+      what ? `What happened: ${what}` : '',
+      category ? `Category: ${catLabel}` : '',
+      when ? `When: ${when}` : '',
+      entity ? `Entity: ${entity}` : '',
+      outcome ? `Outcome sought: ${outcome}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+    if (content.trim()) analyzeProblem(content)
+  }
 
   return (
     <div>
@@ -330,7 +385,29 @@ function ComplaintAssistant() {
               <Button variant="outline" icon="refresh" onClick={generate}>
                 {t('common.regenerate')}
               </Button>
+              <Button
+                variant="ghost"
+                icon="sparkle"
+                onClick={requestAiGuidance}
+                disabled={aiState === 'loading'}
+              >
+                {t('ai.problemButton')}
+              </Button>
             </div>
+
+            {aiState !== 'idle' && (
+              <div style={{ marginTop: 18 }}>
+                <AiAnalysisPanel
+                  state={aiState}
+                  analysis={aiResult}
+                  track="B"
+                  onRetry={() => {
+                    const content = aiRetryRef.current
+                    if (content) analyzeProblem(content)
+                  }}
+                />
+              </div>
+            )}
 
             <div className="row row--end mt-3">
               <Button

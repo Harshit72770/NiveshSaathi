@@ -940,6 +940,17 @@ button { font-family: inherit; }
   transition: width 0.4s ease;
 }
 
+/* Indeterminate animation for the AI analysis loading state */
+@keyframes ai-progress-slide {
+  0% { width: 12%; }
+  50% { width: 72%; }
+  100% { width: 96%; }
+}
+
+.ai-progress__fill {
+  animation: ai-progress-slide 1.6s ease-in-out infinite alternate;
+}
+
 /* ---------- Hero (Home) ---------- */
 
 .hero {

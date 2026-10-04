@@ -1,8 +1,11 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import Icon from '../components/Icon.jsx'
+import Button from '../components/Button.jsx'
 import LearningCard from '../components/LearningCard.jsx'
+import AiAnalysisPanel from '../components/AiAnalysisPanel.jsx'
+import { fetchAiAnalysis } from '../utils/aiAnalysis.js'
 import { learningData } from '../data/learningData.js'
 import { useLanguage, getModuleContent } from '../i18n/index.js'
 
@@ -22,6 +25,12 @@ export default function Learn() {
     () => topicFromSearch(location.search) || DEFAULT_MODULE,
   )
 
+  /* AI explanation (Track C) — opt-in, per selected module. */
+  const [aiState, setAiState] = useState('idle') // idle | loading | done | error
+  const [aiResult, setAiResult] = useState(null)
+  const aiJobRef = useRef(0)
+  const aiRetryRef = useRef(null)
+
   // Allow /check and elsewhere to deep-link: /learn?topic=risk
   useEffect(() => {
     const topic = topicFromSearch(location.search)
@@ -35,6 +44,59 @@ export default function Learn() {
 
   const activeContent = getModuleContent(language, activeModule.id)
   const progress = 100
+
+  /**
+   * Request a simple AI explanation of the active module.
+   * Opt-in (button) so switching modules never fires unwanted
+   * requests; educational content is benign by design.
+   */
+  const explainModule = (content) => {
+    const job = ++aiJobRef.current
+    aiRetryRef.current = content
+    setAiResult(null)
+    setAiState('loading')
+    fetchAiAnalysis({
+      track: 'C',
+      content,
+      language,
+      existingAnalysis: {
+        framework: 'Track C investor education module',
+        moduleId: activeModule.id,
+        educational: true,
+      },
+    })
+      .then((ai) => {
+        if (job !== aiJobRef.current) return
+        setAiResult(ai)
+        setAiState('done')
+      })
+      .catch(() => {
+        if (job !== aiJobRef.current) return
+        setAiResult(null)
+        setAiState('error')
+      })
+  }
+
+  const explainWithAi = () => {
+    const content = [
+      `Module: ${activeContent?.title || activeModule.id}`,
+      activeContent?.subtitle || '',
+      `Concept: ${activeContent?.concept || ''}`,
+      `Simple explanation: ${activeContent?.simple || ''}`,
+      `Example: ${activeContent?.example || ''}`,
+    ]
+      .filter(Boolean)
+      .join('\n')
+    if (content.trim()) explainModule(content)
+  }
+
+  // Switching modules clears any previous AI explanation.
+  useEffect(() => {
+    aiJobRef.current += 1
+    aiRetryRef.current = null
+    setAiResult(null)
+    setAiState('idle')
+  }, [activeId])
 
   return (
     <div className="page">
@@ -132,6 +194,38 @@ export default function Learn() {
             content={activeContent}
             onRelated={(id) => navigate(`/check?signal=${encodeURIComponent(id)}`)}
           />
+
+          {/* ------------------------------- AI-ASSISTED ANALYSIS (Track C) */}
+          <section className="section" style={{ marginTop: 20 }}>
+            {aiState === 'idle' && (
+              <div className="card card--pad-lg animate-in">
+                <div className="ev-block__title">
+                  <Icon name="sparkle" size={15} />
+                  {t('ai.learnTitle')}
+                </div>
+                <p className="small text-muted" style={{ margin: '6px 0 16px' }}>
+                  {t('ai.learnDesc')}
+                </p>
+                <Button
+                  variant="soft"
+                  icon="sparkle"
+                  onClick={explainWithAi}
+                  disabled={aiState === 'loading'}
+                >
+                  {t('ai.learnButton')}
+                </Button>
+              </div>
+            )}
+            <AiAnalysisPanel
+              state={aiState}
+              analysis={aiResult}
+              track="C"
+              onRetry={() => {
+                const content = aiRetryRef.current
+                if (content) explainModule(content)
+              }}
+            />
+          </section>
         </div>
       </div>
     </div>

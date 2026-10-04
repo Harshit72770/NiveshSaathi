@@ -5,6 +5,8 @@ import Icon from '../components/Icon.jsx'
 import Button from '../components/Button.jsx'
 import ReflectionForm, { deriveReflections } from '../components/ReflectionForm.jsx'
 import ProgressSteps from '../components/ProgressSteps.jsx'
+import AiAnalysisPanel from '../components/AiAnalysisPanel.jsx'
+import { fetchAiAnalysis } from '../utils/aiAnalysis.js'
 import { read, write, uid } from '../utils/localStorage.js'
 import { useLanguage, optionLabel, tv } from '../i18n/index.js'
 
@@ -21,18 +23,72 @@ const ANSWER_ROWS = [
   'reconsider',
 ]
 
+/** Compose the user's reflection answers into readable journal text. */
+function composeJournalText(answers, t) {
+  const lines = []
+  for (const id of ANSWER_ROWS) {
+    const value = answers?.[id]
+    if (value != null && String(value).trim()) {
+      const label = t(`beforeInvest.questions.${id}.label`)
+      lines.push(`${label}: ${value}`)
+    }
+  }
+  return lines.join('\n')
+}
+
 export default function BeforeInvest() {
   const [answers, setAnswers] = useState(null)
   const [saved, setSaved] = useState(false)
   const topRef = useRef(null)
-  const { t } = useLanguage()
+  const { language, t } = useLanguage()
+
+  /* AI interpretation (Track D) — complements the rule-based reflections. */
+  const [aiState, setAiState] = useState('idle') // idle | loading | done | error
+  const [aiResult, setAiResult] = useState(null)
+  const aiJobRef = useRef(0)
+  const aiRetryRef = useRef(null)
 
   const reflections = answers ? deriveReflections(answers) : []
   const steps = STEP_KEYS.map((k) => t(`beforeInvest.steps.${k}`))
 
+  /**
+   * Request the AI behavioural reading for the submitted answers.
+   * Best-effort: the rule-based reflections above stay on screen
+   * whatever happens here.
+   */
+  const runAiReflection = (submittedAnswers, derived) => {
+    const job = ++aiJobRef.current
+    const content = composeJournalText(submittedAnswers, t)
+    if (!content.trim()) return
+    aiRetryRef.current = { content, derived }
+    setAiResult(null)
+    setAiState('loading')
+    fetchAiAnalysis({
+      track: 'D',
+      content,
+      language,
+      existingAnalysis: {
+        framework: 'Track D behavioural reflection (cooling-off circuit breaker)',
+        ruleBasedObservations: derived.map((r) => r.id),
+      },
+    })
+      .then((ai) => {
+        if (job !== aiJobRef.current) return
+        setAiResult(ai)
+        setAiState('done')
+      })
+      .catch(() => {
+        if (job !== aiJobRef.current) return
+        setAiResult(null)
+        setAiState('error')
+      })
+  }
+
   const handleSubmit = (a) => {
     setAnswers(a)
     setSaved(false)
+    const derived = deriveReflections(a)
+    runAiReflection(a, derived)
     window.setTimeout(() => {
       topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 80)
@@ -41,6 +97,10 @@ export default function BeforeInvest() {
   const reset = () => {
     setAnswers(null)
     setSaved(false)
+    aiJobRef.current += 1
+    aiRetryRef.current = null
+    setAiResult(null)
+    setAiState('idle')
     window.setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 60)
   }
 
@@ -109,12 +169,18 @@ export default function BeforeInvest() {
                   <Icon name="eye" size={15} />
                   {t('beforeInvest.reflectionTitle')}
                 </div>
-                <span className="badge badge--neutral">
-                  {reflections.length}{' '}
-                  {reflections.length === 1
-                    ? t('common.observation')
-                    : t('common.observations')}
-                </span>
+                <div className="row" style={{ gap: 6 }}>
+                  <span className="badge badge--neutral">
+                    {reflections.length}{' '}
+                    {reflections.length === 1
+                      ? t('common.observation')
+                      : t('common.observations')}
+                  </span>
+                  <span className="badge badge--neutral">
+                    <Icon name="eye" size={12} />
+                    {t('ai.badgeRules')}
+                  </span>
+                </div>
               </div>
 
               <p className="small text-muted" style={{ marginTop: 10, marginBottom: 20 }}>
@@ -174,6 +240,19 @@ export default function BeforeInvest() {
                   {t('beforeInvest.recommendationsBody')}
                 </div>
               </div>
+
+              {/* ------------------------------- AI-ASSISTED ANALYSIS (Track D) */}
+              <AiAnalysisPanel
+                state={aiState}
+                analysis={aiResult}
+                track="D"
+                onRetry={() => {
+                  const retry = aiRetryRef.current
+                  if (retry && answers) {
+                    runAiReflection(answers, retry.derived)
+                  }
+                }}
+              />
             </div>
           </section>
 

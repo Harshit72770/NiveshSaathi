@@ -7,6 +7,8 @@ import EvidenceCard from '../components/EvidenceCard.jsx'
 import ProgressSteps from '../components/ProgressSteps.jsx'
 import { analyzeContent } from '../utils/contentAnalyzer.js'
 import { computeAssessment } from '../utils/assessment.js'
+import { fetchAiAnalysis } from '../utils/aiAnalysis.js'
+import AiAnalysisPanel from '../components/AiAnalysisPanel.jsx'
 import { OCR_ACCEPT, isSupportedImage, ocrLanguages, fetchPageText } from '../utils/inputSources.js'
 import { DEMO_MESSAGES } from '../data/demoContent.js'
 import { SIGNAL_MAP } from '../data/warningSignals.js'
@@ -43,6 +45,14 @@ export default function CheckContent() {
   const [lostMoney, setLostMoney] = useState(false)
   const resultRef = useRef(null)
   const inputRef = useRef(null)
+
+  /* AI analysis (Track A) — complements, never replaces, the rules. */
+  const [aiState, setAiState] = useState('idle') // idle | loading | done | error
+  const [aiResult, setAiResult] = useState(null)
+  const aiJobRef = useRef(0)
+  /* Last analyzed content + rule result, so "Retry AI" re-requests
+     exactly what was analysed even if the textarea changed. */
+  const aiRetryRef = useRef(null)
 
   /* Input modes: paste (original) / screenshot OCR / link. */
   const [mode, setMode] = useState('paste')
@@ -87,6 +97,49 @@ export default function CheckContent() {
     }
   }, [])
 
+  /**
+   * Request the AI interpretation (Track A) for the current text.
+   * Best-effort: the rule-based result above is already final and
+   * stays on screen whatever happens here. Stale responses are
+   * discarded via the job counter.
+   */
+  const runAiAnalysis = (content, analysis) => {
+    const job = ++aiJobRef.current
+    aiRetryRef.current = { content, analysis }
+    setAiResult(null)
+    setAiState('loading')
+    fetchAiAnalysis({
+      track: 'A',
+      content,
+      language,
+      existingAnalysis: {
+        signalCount: analysis.signalCount,
+        highSignalCount: analysis.highSignalCount,
+        cautionLevel: analysis.cautionLevel,
+        contentType: analysis.contentType,
+        claim: analysis.claim,
+        warningSignals: analysis.warningSignals.map((s) => ({
+          id: s.id,
+          label: s.label,
+          severity: s.severity,
+        })),
+        evidence: analysis.evidence,
+        missingEvidence: analysis.missingEvidence,
+        intendedAction: analysis.intendedAction,
+      },
+    })
+      .then((ai) => {
+        if (job !== aiJobRef.current) return
+        setAiResult(ai)
+        setAiState('done')
+      })
+      .catch(() => {
+        if (job !== aiJobRef.current) return
+        setAiResult(null)
+        setAiState('error')
+      })
+  }
+
   const analyze = () => {
     if (!text.trim()) {
       setResult(null)
@@ -103,6 +156,8 @@ export default function CheckContent() {
     }
     setResult({ ...analysis, source })
     setLostMoney(false)
+    // AI interpretation runs alongside the rules (Track A).
+    runAiAnalysis(text, analysis)
     window.setTimeout(() => {
       resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 80)
@@ -116,6 +171,10 @@ export default function CheckContent() {
     setBlockedFacts(null)
     resetImage()
     setLinkState('idle')
+    aiJobRef.current += 1
+    aiRetryRef.current = null
+    setAiResult(null)
+    setAiState('idle')
     inputRef.current?.focus()
     window.setTimeout(() => {
       inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -130,6 +189,10 @@ export default function CheckContent() {
     setBlockedFacts(null)
     resetImage()
     setLinkState('idle')
+    aiJobRef.current += 1
+    aiRetryRef.current = null
+    setAiResult(null)
+    setAiState('idle')
     inputRef.current?.focus()
   }
 
@@ -815,9 +878,28 @@ export default function CheckContent() {
             </section>
           )}
 
-          {/* ------------------------------------------------ EVIDENCE CARD (Track E) */}
+          {/* ----------------------------------- RULE-BASED RESULT (Tracks E + A) */}
           <section className="section">
+            <div className="row" style={{ gap: 8, marginBottom: 10 }}>
+              <span className="badge badge--neutral">
+                <Icon name="search" size={12} />
+                {t('ai.badgeRules')}
+              </span>
+            </div>
             <EvidenceCard result={result} />
+          </section>
+
+          {/* ------------------------------------------- AI-ASSISTED ANALYSIS */}
+          <section className="section">
+            <AiAnalysisPanel
+              state={aiState}
+              analysis={aiResult}
+              track="A"
+              onRetry={() => {
+                const retry = aiRetryRef.current
+                if (retry) runAiAnalysis(retry.content, retry.analysis)
+              }}
+            />
           </section>
 
           {/* ------------------------------------------------ SAFE ACTION (Track A) */}

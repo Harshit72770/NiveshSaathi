@@ -1510,6 +1510,54 @@ export default {
     },
   },
 
+  /* ----------------------------------------------- AI-ASSISTED ANALYSIS */
+  ai: {
+    title: 'AI-Assisted Analysis',
+    badgeRules: 'Detected by NiveshSaathi rules',
+    badgeAi: 'AI interpretation',
+    subtitle:
+      'An AI-assisted interpretation that complements — never replaces — the rule-based analysis above.',
+    loading: 'AI is analysing this content…',
+    retry: 'Retry AI analysis',
+    analyzeEntry: 'Analyze with AI',
+    learnTitle: 'AI-assisted explanation',
+    learnDesc:
+      'Get a plain-language, everyday explanation of this module — educational only, never a recommendation.',
+    learnButton: 'Explain with AI',
+    problemButton: 'AI guidance',
+    unavailableTitle:
+      'AI analysis is temporarily unavailable. Your existing analysis is still available.',
+    unavailableBody:
+      'The rule-based results above were produced locally and are unaffected. You can retry the AI analysis in a moment.',
+    summary: 'AI Summary',
+    claimed: 'What is being claimed?',
+    tryingToDo: 'What is this content trying to make you do?',
+    warningSignals: 'AI warning signals',
+    warningSignalsNote:
+      'These are AI observations, separate from the rule-based warning signals above. A warning signal is not proof of fraud.',
+    supportingEvidence: 'Supporting evidence',
+    missingContext: 'Missing context',
+    uncertainty: 'Uncertainty',
+    verification: 'How to verify independently',
+    safeNextSteps: 'Safe next steps',
+    trackInsight: 'AI insight for this check',
+    noWarningSignals:
+      'The AI did not identify additional manipulation patterns.',
+    emptyEvidence:
+      'The content does not present supporting evidence.',
+    emptyList: 'None identified.',
+    disclaimerTitle: 'Important:',
+    disclaimerBody:
+      'this is an AI interpretation — not a fraud verdict, not an investment recommendation, and not a prediction. The rule-based analysis remains the foundation of this result, and the decision remains yours.',
+    tracks: {
+      A: 'Fraud warning check',
+      B: 'Rights & grievance help',
+      C: 'Financial education',
+      D: 'Behavioural reflection',
+      E: 'Claim & misinformation check',
+    },
+  },
+
   /* ---------------------------------------------------------------- FOOTER */
   footer: {
     strong: 'NiveshSaathi does not provide investment recommendations.',
