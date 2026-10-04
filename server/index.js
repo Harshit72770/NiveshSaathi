@@ -37,7 +37,7 @@ dotenv.config()
 /* -------------------------------------------------------------------------- */
 
 /** Groq model used for every analysis. */
-const MODEL = 'openai/gpt-oss-20b'
+export const MODEL = 'openai/gpt-oss-20b'
 
 /** Hard ceiling on request content so a paste cannot stall the model. */
 const MAX_CONTENT_LENGTH = 20000
@@ -220,7 +220,28 @@ function buildUserPrompt({ content, language, existingAnalysis }) {
 /* -------------------------------------------------------------------------- */
 
 class BadRequestError extends Error {}
-class AiServiceError extends Error {}
+class AiServiceError extends Error {
+  constructor(message, groqStatus) {
+    super(message)
+    this.name = 'AiServiceError'
+    /** Upstream HTTP status from Groq when one exists (diagnostics only). */
+    this.groqStatus = groqStatus ?? null
+  }
+}
+
+export { BadRequestError, AiServiceError }
+
+/**
+ * Error text that is safe to put in logs or an HTTP response:
+ * truncated, and with any accidentally embedded API key redacted.
+ * The key itself is NEVER logged or returned.
+ */
+export function safeErrorMessage(err, max = 400) {
+  const raw = err?.message ?? String(err ?? 'unknown error')
+  return String(raw)
+    .replace(/gsk_[A-Za-z0-9_-]+/g, 'gsk_[redacted]')
+    .slice(0, max)
+}
 
 const STRING_FIELDS = [
   'summary',
@@ -383,6 +404,7 @@ function getGroq() {
 export async function runAiAnalysis({ track, content, language, existingAnalysis }) {
   const groq = getGroq()
   if (!groq) {
+    console.error('[ai] groq unavailable: GROQ_API_KEY configured=false')
     throw new AiServiceError('GROQ_API_KEY is not configured on this server')
   }
 
@@ -401,12 +423,18 @@ export async function runAiAnalysis({ track, content, language, existingAnalysis
       { timeout: REQUEST_TIMEOUT_MS },
     )
     rawText = completion?.choices?.[0]?.message?.content
+    console.log(`[ai] groq ok model=${MODEL} tokens=${completion?.usage?.total_tokens ?? 'n/a'}`)
   } catch (err) {
-    throw new AiServiceError(`Groq request failed: ${err?.message || 'unknown error'}`)
+    const groqStatus = err?.status ?? err?.response?.status ?? null
+    console.error(
+      `[ai] groq failed: status=${groqStatus ?? 'n/a'} message=${safeErrorMessage(err)}`,
+    )
+    throw new AiServiceError(`Groq request failed: ${safeErrorMessage(err)}`, groqStatus)
   }
 
   const parsed = extractJsonObject(rawText)
   if (!parsed) {
+    console.error('[ai] model reply was not parseable JSON (Groq returned HTTP 200)')
     throw new AiServiceError('AI response could not be parsed as JSON')
   }
 
@@ -416,6 +444,28 @@ export async function runAiAnalysis({ track, content, language, existingAnalysis
 /* -------------------------------------------------------------------------- */
 /* Express wiring                                                             */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * Key-safe request logging shared by BOTH routes:
+ *   - the Express route (local dev / `npm run server`)
+ *   - api/ai/analyze.js (Vercel serverless)
+ *
+ * Records only booleans — the API key value is NEVER logged.
+ */
+export function logApiRequest(source, input) {
+  console.log(
+    `[api] ${source} request reached | GROQ_API_KEY configured=${Boolean(
+      process.env.GROQ_API_KEY,
+    )} | model=${MODEL}`,
+  )
+  if (input) {
+    console.log(
+      `[api] ${source} track=${input.track ?? '-'} language=${input.language ?? '-'} contentChars=${
+        input.content ? String(input.content).length : 0
+      }`,
+    )
+  }
+}
 
 /** The /api router — also mounted inside the Vite dev server. */
 export function createApiRouter() {
@@ -427,14 +477,22 @@ export function createApiRouter() {
   })
 
   router.post('/ai/analyze', async (req, res) => {
+    logApiRequest('express')
     try {
       const input = validateAiRequest(req.body)
+      logApiRequest('express', input)
       const analysis = await runAiAnalysis(input)
       res.json({ ...analysis, track: input.track })
     } catch (err) {
       const status = err instanceof BadRequestError ? 400 : err instanceof AiServiceError ? 502 : 500
       // Never leak internal details to the browser beyond a short message.
-      res.status(status).json({ ok: false, error: err.message || 'AI analysis failed' })
+      res.status(status).json({
+        ok: false,
+        error: safeErrorMessage(err) || 'AI analysis failed',
+        ...(err instanceof AiServiceError && err.groqStatus
+          ? { groqStatus: err.groqStatus }
+          : {}),
+      })
     }
   })
 

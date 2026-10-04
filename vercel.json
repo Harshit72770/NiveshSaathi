@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "framework": "vite",
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "functions": {
+    "api/ai/analyze.js": {
+      "maxDuration": 60
+    },
+    "api/health.js": {
+      "maxDuration": 15
+    }
+  }
+}
